@@ -4,52 +4,257 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#fff3f6">
 <title>ことばの100回習慣</title>
 <style>
-body{font-family:system-ui;text-align:center;background:#fff5f7;color:#382b32;padding:20px}
-h1{font-size:24px}
-.card{background:white;border-radius:20px;padding:22px;margin:16px 0;box-shadow:0 3px 15px #0001}
-.count{font-size:54px;font-weight:bold;margin:10px}
-button{border:0;border-radius:15px;padding:16px;margin:5px;font-size:18px;background:#e77b9b;color:white}
-.small{background:#ddd;color:#333}
-progress{width:100%;height:16px}
+*{box-sizing:border-box}
+body{
+ margin:0;padding:22px 16px 45px;
+ background:#fff3f6;color:#42323a;
+ font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+ text-align:center
+}
+h1{font-size:25px;margin:15px 0 6px}
+.subtitle{font-size:13px;color:#8b7680}
+.card{
+ background:white;border-radius:22px;
+ padding:22px 18px;margin:16px 0;
+ box-shadow:0 5px 20px #b66b8715
+}
+h2{font-size:20px;margin:0 0 12px}
+.number{font-size:52px;font-weight:800}
+.target{font-size:16px;color:#a38d98}
+progress{
+ width:100%;height:14px;
+ accent-color:#e77d9c;margin:12px 0
+}
+button{
+ border:0;border-radius:14px;
+ padding:15px 20px;font-size:17px;
+ font-weight:600;cursor:pointer;
+ background:#e77d9c;color:white;
+ margin:5px
+}
+button:disabled{opacity:.45}
+.secondary{background:#eee4e8;color:#55434d}
+.mic{background:#b64e78;width:90%;max-width:360px}
+.mic.active{background:#d33e58}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.stats .card{margin:0;padding:18px 8px}
+.statnum{font-size:27px;font-weight:800}
+.label{font-size:12px;color:#8a7880}
+#message{font-size:14px;color:#8a6274;line-height:1.7}
 </style>
 </head>
 <body>
+
 <h1>❤️ ことばの100回習慣</h1>
-<p id="date"></p>
-<div id="app"></div>
-<p id="status"></p>
-<script>
-const today=()=>new Date().toLocaleDateString("sv-SE");
-const key="kotoba-records";
-let records={};
-try{records=JSON.parse(localStorage.getItem(key))||{}}catch(e){}
-function data(){return records[today()]||(records[today()]={thanks:0,love:0})}
-function save(){localStorage.setItem(key,JSON.stringify(records));render()}
-function change(k,n){data()[k]=Math.max(0,Math.min(100,data()[k]+n));save()}
-function render(){
-document.getElementById("date").textContent=today();
-let d=data();
-document.getElementById("app").innerHTML=[
-["thanks","🙏 ありがとう"],["love","❤️ 愛してる"]
-].map(([k,name])=>`
+<p class="subtitle" id="date"></p>
+
 <div class="card">
-<h2>${name}</h2>
-<div class="count">${d[k]} / 100</div>
-<progress value="${d[k]}" max="100"></progress>
-<div>
-<button onclick="change('${k}',1)">＋1</button>
-<button class="small" onclick="change('${k}',-1)">−1</button>
+<h2>🎤 音声カウント</h2>
+<button class="mic" id="micButton" onclick="toggleMic()">
+音声認識を開始
+</button>
+<p id="message">
+ボタンを押して「ありがとう」「愛してる」と話してね
+</p>
 </div>
-</div>`).join("");
-document.getElementById("status").textContent=
-d.thanks===100&&d.love===100?
-"🎉 今日の目標達成！":
-"あと"+(200-d.thanks-d.love)+"回！";
+
+<div id="counters"></div>
+
+<div class="stats">
+<div class="card">
+<div class="label">🔥 連続達成</div>
+<div class="statnum" id="streak">0日</div>
+</div>
+<div class="card">
+<div class="label">🏆 達成日数</div>
+<div class="statnum" id="days">0日</div>
+</div>
+</div>
+
+<div class="card">
+<h2>💎 これまでの累計</h2>
+<p>🙏 ありがとう</p>
+<div class="statnum" id="totalThanks">0回</div>
+<p>❤️ 愛してる</p>
+<div class="statnum" id="totalLove">0回</div>
+<hr style="border:0;border-top:1px solid #eee;margin:20px">
+<div class="label">合計</div>
+<div class="statnum" id="grandTotal">0回</div>
+</div>
+
+<script>
+const STORAGE_KEY="kotoba-counter-v2";
+let records={};
+try{
+ records=JSON.parse(localStorage.getItem(STORAGE_KEY))||{};
+}catch(e){records={}}
+
+function today(){
+ const d=new Date();
+ return d.getFullYear()+"-"+
+ String(d.getMonth()+1).padStart(2,"0")+"-"+
+ String(d.getDate()).padStart(2,"0");
+}
+function getDay(){
+ const k=today();
+ if(!records[k])records[k]={thanks:0,love:0};
+ return records[k];
+}
+function save(){
+ try{
+  localStorage.setItem(STORAGE_KEY,JSON.stringify(records));
+ }catch(e){
+  document.getElementById("message").textContent=
+  "保存できません。Safariの設定を確認してください";
+ }
+ render();
+}
+function change(type,amount){
+ const d=getDay();
+ d[type]=Math.max(0,d[type]+amount);
+ save();
+}
+function completed(d){
+ return d.thanks>=100&&d.love>=100;
+}
+function calculateStreak(){
+ let d=new Date();
+ let count=0;
+ const current=records[today()];
+ if(!current||!completed(current)){
+  d.setDate(d.getDate()-1);
+ }
+ while(true){
+  const key=d.getFullYear()+"-"+
+   String(d.getMonth()+1).padStart(2,"0")+"-"+
+   String(d.getDate()).padStart(2,"0");
+  if(!records[key]||!completed(records[key]))break;
+  count++;
+  d.setDate(d.getDate()-1);
+ }
+ return count;
+}
+function render(){
+ const d=getDay();
+ document.getElementById("date").textContent=
+ new Date().toLocaleDateString("ja-JP",{
+  year:"numeric",month:"long",day:"numeric",weekday:"long"
+ });
+ const items=[
+  ["thanks","🙏 ありがとう"],
+  ["love","❤️ 愛してる"]
+ ];
+ document.getElementById("counters").innerHTML=
+ items.map(([key,name])=>`
+ <div class="card">
+ <h2>${name}</h2>
+ <div class="number">
+ ${d[key]}<span class="target"> / 100</span>
+ </div>
+ <progress value="${Math.min(d[key],100)}" max="100"></progress>
+ <div>
+ <button onclick="change('${key}',1)">＋1</button>
+ <button class="secondary" onclick="change('${key}',-1)">−1</button>
+ </div>
+ </div>`).join("");
+
+ let tt=0,tl=0,days=0;
+ Object.values(records).forEach(r=>{
+  tt+=r.thanks||0;
+  tl+=r.love||0;
+  if(completed(r))days++;
+ });
+ document.getElementById("totalThanks").textContent=tt+"回";
+ document.getElementById("totalLove").textContent=tl+"回";
+ document.getElementById("grandTotal").textContent=tt+tl+"回";
+ document.getElementById("streak").textContent=calculateStreak()+"日";
+ document.getElementById("days").textContent=days+"日";
 }
 render();
-setInterval(()=>{if(document.getElementById("date").textContent!==today())render()},30000);
+setInterval(render,30000);
+
+// 音声認識
+const SpeechRecognition=
+ window.SpeechRecognition||window.webkitSpeechRecognition;
+let recognition=null;
+let listening=false;
+let processedIndex=0;
+
+function setMessage(msg){
+ document.getElementById("message").textContent=msg;
+}
+function updateMic(){
+ const b=document.getElementById("micButton");
+ b.textContent=listening?"■ 音声認識を停止":"🎤 音声認識を開始";
+ b.classList.toggle("active",listening);
+}
+function countSpeech(text){
+ const normalized=text.replace(/\s/g,"");
+ const thanks=(normalized.match(/ありがとう/g)||[]).length;
+ const love=(normalized.match(/愛してる|愛している/g)||[]).length;
+ if(thanks||love){
+  const d=getDay();
+  d.thanks+=thanks;
+  d.love+=love;
+  save();
+  setMessage("認識："+text);
+ }else{
+  setMessage("認識："+text+"（対象の言葉なし）");
+ }
+}
+function toggleMic(){
+ if(!SpeechRecognition){
+  setMessage("このブラウザは音声認識に対応していません。手動ボタンを使ってね。");
+  return;
+ }
+ if(listening){
+  listening=false;
+  if(recognition)recognition.stop();
+  updateMic();
+  return;
+ }
+ listening=true;
+ recognition=new SpeechRecognition();
+ recognition.lang="ja-JP";
+ recognition.continuous=true;
+ recognition.interimResults=false;
+ recognition.onresult=(event)=>{
+  for(let i=event.resultIndex;i<event.results.length;i++){
+   if(event.results[i].isFinal){
+    countSpeech(event.results[i][0].transcript);
+   }
+  }
+ };
+ recognition.onerror=(event)=>{
+  setMessage("音声認識エラー："+event.error);
+  if(event.error==="not-allowed"||
+     event.error==="service-not-allowed"){
+   listening=false;
+   updateMic();
+  }
+ };
+ recognition.onend=()=>{
+  if(listening){
+   try{recognition.start()}
+   catch(e){
+    listening=false;
+    updateMic();
+   }
+  }
+ };
+ try{
+  recognition.start();
+  setMessage("聞き取り中… 言葉を話してね！");
+  updateMic();
+ }catch(e){
+  listening=false;
+  updateMic();
+  setMessage("音声認識を開始できませんでした");
+ }
+}
 </script>
 </body>
 </html>
