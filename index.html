@@ -140,8 +140,8 @@ button:disabled { opacity: 0.45; }
 
 <script>
 const STORAGE_KEY = "kotoba-counter-v2";
-const REPAIR_KEY = "kotoba-repair-9days-v2";
 const REPAIRED_DAYS_KEY = "kotoba-repaired-days";
+const FIX_KEY = "kotoba-fix-8days-800-v2";
 
 function loadJSON(key, fallback) {
   try {
@@ -181,44 +181,69 @@ function completed(d) {
     Number(d.love || 0) >= 100;
 }
 
-// 過去9日間の達成記録を一度だけ補正
-// 本日が未達成でも連続9日と表示できるよう
-// 昨日までの9日間を補正対象とする
+// 2026年11月1日〜8日の達成記録を補正
+// この補正は一度だけ実行する
 function repairAchievements() {
-  if (localStorage.getItem(REPAIR_KEY) === "done") return;
+  if (localStorage.getItem(FIX_KEY) === "done") return;
 
+  const dates = [
+    "2026-11-01",
+    "2026-11-02",
+    "2026-11-03",
+    "2026-11-04",
+    "2026-11-05",
+    "2026-11-06",
+    "2026-11-07",
+    "2026-11-08"
+  ];
+
+  // 以前の9日間補正を解除
   const repaired = loadJSON(REPAIRED_DAYS_KEY, []);
-  const dates = new Set(Array.isArray(repaired) ? repaired : []);
+  const previous = Array.isArray(repaired) ? repaired : [];
 
-  const base = new Date();
-  base.setHours(12, 0, 0, 0);
+  // 対象期間は実際の記録で管理し、
+  // 対象外の補正済み日付は残す
+  const corrected = previous.filter(
+    date => !dates.includes(date) &&
+      date !== "2026-11-09"
+  );
 
-  for (let i = 1; i <= 9; i++) {
-    const d = new Date(base);
-    d.setDate(base.getDate() - i);
-    dates.add(dateKey(d));
-  }
+  dates.forEach(date => {
+    records[date] = {
+      thanks: 100,
+      love: 100
+    };
+  });
 
   try {
     localStorage.setItem(
-      REPAIRED_DAYS_KEY,
-      JSON.stringify([...dates])
+      STORAGE_KEY,
+      JSON.stringify(records)
     );
-    localStorage.setItem(REPAIR_KEY, "done");
+
+    localStorage.setItem(
+      REPAIRED_DAYS_KEY,
+      JSON.stringify(corrected)
+    );
+
+    localStorage.setItem(
+      "kotoba-repair-9days-v2",
+      "done"
+    );
+
+    localStorage.setItem(FIX_KEY, "done");
   } catch (e) {
-    console.error("達成記録の補正を保存できませんでした", e);
+    console.error("達成記録の補正に失敗しました", e);
   }
 }
 
 repairAchievements();
 
-function getRepairedDays() {
-  const value = loadJSON(REPAIRED_DAYS_KEY, []);
-  return new Set(Array.isArray(value) ? value : []);
-}
-
 function getAchievedDays() {
-  const dates = getRepairedDays();
+  const repaired = loadJSON(REPAIRED_DAYS_KEY, []);
+  const dates = new Set(
+    Array.isArray(repaired) ? repaired : []
+  );
 
   Object.entries(records).forEach(([key, r]) => {
     if (completed(r)) dates.add(key);
@@ -232,7 +257,6 @@ function calculateStreak() {
   const d = new Date();
   d.setHours(12, 0, 0, 0);
 
-  // 今日が未達成なら昨日から数える
   if (!achieved.has(dateKey(d))) {
     d.setDate(d.getDate() - 1);
   }
@@ -253,7 +277,10 @@ function setMessage(message) {
 
 function save() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(records)
+    );
   } catch (e) {
     setMessage("記録を保存できませんでした");
   }
@@ -262,7 +289,10 @@ function save() {
 
 function change(type, amount) {
   const d = getDay();
-  d[type] = Math.max(0, Number(d[type] || 0) + amount);
+  d[type] = Math.max(
+    0,
+    Number(d[type] || 0) + amount
+  );
   save();
 }
 
@@ -295,12 +325,14 @@ function render() {
           max="100">
         </progress>
         <div>
-          <button class="countButton" onclick="change('${key}', 1)">
+          <button class="countButton"
+            onclick="change('${key}', 1)">
             ＋1
           </button>
         </div>
         <div>
-          <button class="minusButton" onclick="change('${key}', -1)">
+          <button class="minusButton"
+            onclick="change('${key}', -1)">
             −1 戻す
           </button>
         </div>
@@ -333,38 +365,51 @@ setInterval(render, 30000);
 
 // 音声認識
 const SpeechRecognition =
-  window.SpeechRecognition || window.webkitSpeechRecognition;
+  window.SpeechRecognition ||
+  window.webkitSpeechRecognition;
 
 let recognition = null;
 let listening = false;
 
 function updateMic() {
   const button = document.getElementById("micButton");
+
   button.textContent = listening
     ? "■ 音声認識を停止"
     : "🎤 音声認識を開始";
+
   button.classList.toggle("active", listening);
 }
 
 function countSpeech(text) {
   const normalized = text.replace(/\s/g, "");
-  const thanks = (normalized.match(/ありがとう/g) || []).length;
-  const love = (normalized.match(/愛してる|愛している/g) || []).length;
+
+  const thanks =
+    (normalized.match(/ありがとう/g) || []).length;
+
+  const love =
+    (normalized.match(/愛してる|愛している/g) || []).length;
 
   if (thanks || love) {
     const d = getDay();
+
     d.thanks = Number(d.thanks || 0) + thanks;
     d.love = Number(d.love || 0) + love;
+
     save();
     setMessage("認識：" + text);
   } else {
-    setMessage("認識：" + text + "（対象の言葉なし）");
+    setMessage(
+      "認識：" + text + "（対象の言葉なし）"
+    );
   }
 }
 
 function toggleMic() {
   if (!SpeechRecognition) {
-    setMessage("このブラウザでは音声認識が使えません。手動ボタンを使ってね。");
+    setMessage(
+      "このブラウザでは音声認識が使えません。手動ボタンを使ってね。"
+    );
     return;
   }
 
@@ -382,15 +427,23 @@ function toggleMic() {
   recognition.interimResults = false;
 
   recognition.onresult = event => {
-    for (let i = event.resultIndex; i < event.results.length; i++) {
+    for (
+      let i = event.resultIndex;
+      i < event.results.length;
+      i++
+    ) {
       if (event.results[i].isFinal) {
-        countSpeech(event.results[i][0].transcript);
+        countSpeech(
+          event.results[i][0].transcript
+        );
       }
     }
   };
 
   recognition.onerror = event => {
-    setMessage("音声認識エラー：" + event.error);
+    setMessage(
+      "音声認識エラー：" + event.error
+    );
 
     if (
       event.error === "not-allowed" ||
@@ -414,12 +467,16 @@ function toggleMic() {
 
   try {
     recognition.start();
-    setMessage("聞き取り中… 言葉を話してね！");
+    setMessage(
+      "聞き取り中… 言葉を話してね！"
+    );
     updateMic();
   } catch (e) {
     listening = false;
     updateMic();
-    setMessage("音声認識を開始できませんでした");
+    setMessage(
+      "音声認識を開始できませんでした"
+    );
   }
 }
 </script>
