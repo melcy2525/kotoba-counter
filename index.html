@@ -141,7 +141,7 @@ button:disabled { opacity: 0.45; }
 <script>
 const STORAGE_KEY = "kotoba-counter-v2";
 const REPAIRED_DAYS_KEY = "kotoba-repaired-days";
-const FIX_KEY = "kotoba-fix-8days-800-v2";
+const FIX_KEY = "kotoba-final-fix-8days-v2";
 
 function loadJSON(key, fallback) {
   try {
@@ -181,8 +181,7 @@ function completed(d) {
     Number(d.love || 0) >= 100;
 }
 
-// 2026年11月1日〜8日の達成記録を補正
-// この補正は一度だけ実行する
+// 11月1日〜8日の記録を一度だけ修正
 function repairAchievements() {
   if (localStorage.getItem(FIX_KEY) === "done") return;
 
@@ -198,16 +197,12 @@ function repairAchievements() {
   ];
 
   // 以前の9日間補正を解除
-  const repaired = loadJSON(REPAIRED_DAYS_KEY, []);
-  const previous = Array.isArray(repaired) ? repaired : [];
-
-  // 対象期間は実際の記録で管理し、
-  // 対象外の補正済み日付は残す
-  const corrected = previous.filter(
-    date => !dates.includes(date) &&
-      date !== "2026-11-09"
+  localStorage.setItem(
+    REPAIRED_DAYS_KEY,
+    JSON.stringify([])
   );
 
+  // 過去8日間を各100回に補正
   dates.forEach(date => {
     records[date] = {
       thanks: 100,
@@ -220,20 +215,9 @@ function repairAchievements() {
       STORAGE_KEY,
       JSON.stringify(records)
     );
-
-    localStorage.setItem(
-      REPAIRED_DAYS_KEY,
-      JSON.stringify(corrected)
-    );
-
-    localStorage.setItem(
-      "kotoba-repair-9days-v2",
-      "done"
-    );
-
     localStorage.setItem(FIX_KEY, "done");
   } catch (e) {
-    console.error("達成記録の補正に失敗しました", e);
+    console.error("補正データを保存できませんでした", e);
   }
 }
 
